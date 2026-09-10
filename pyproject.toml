@@ -7,6 +7,7 @@ name = "ai-ready-enterprise-data-platform"
 version = "0.1.0"
 description = "Cloud-free reference implementation for governed analytics and enterprise AI"
 requires-python = ">=3.11"
+dependencies = ["apache-beam==2.75.0"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -18,4 +19,3 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
-
