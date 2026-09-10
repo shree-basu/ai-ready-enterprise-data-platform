@@ -233,8 +233,7 @@ def _document_records(business_date: date, first_account_id: str) -> list[dict[s
             "allowed_groups": ["support", "platform-engineering"],
             "owner": "platform-reliability",
             "content": (
-                "A retry storm increased failed API requests; "
-                "rate limiting restored stability."
+                "A retry storm increased failed API requests; rate limiting restored stability."
             ),
         },
     ]

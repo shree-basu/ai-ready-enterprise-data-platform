@@ -67,7 +67,7 @@ def _stable_id(*parts: str) -> str:
     return hashlib.sha256("\x1f".join(parts).encode()).hexdigest()
 
 
-def _lineage_record(
+def attach_lineage(
     entity: str, row: dict[str, Any], *, business_date: date, batch_id: str
 ) -> dict[str, Any]:
     key = natural_key(entity, row)
@@ -86,7 +86,7 @@ def _lineage_record(
     }
 
 
-def _quarantine_record(violation: ContractViolation, *, batch_id: str) -> dict[str, Any]:
+def quarantine_record(violation: ContractViolation, *, batch_id: str) -> dict[str, Any]:
     raw_hash = canonical_record_hash(violation.raw_record)
     return {
         **violation.as_record(),
@@ -136,12 +136,12 @@ def process_structured_records(
 
     accepted = {
         entity: [
-            _lineage_record(entity, row, business_date=business_date, batch_id=batch_id)
+            attach_lineage(entity, row, business_date=business_date, batch_id=batch_id)
             for row in accepted_rows[entity]
         ]
         for entity in STRUCTURED_ENTITIES
     }
-    quarantined = [_quarantine_record(violation, batch_id=batch_id) for violation in violations]
+    quarantined = [quarantine_record(violation, batch_id=batch_id) for violation in violations]
     reconciliation = {
         entity: Reconciliation(
             entity=entity,
