@@ -32,6 +32,32 @@ def content_hash(content: str) -> str:
     return hashlib.sha256(normalize_content(content).encode("utf-8")).hexdigest()
 
 
+def _json_value(value: Any) -> Any:
+    if isinstance(value, date | datetime):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {key: _json_value(item) for key, item in sorted(value.items())}
+    if isinstance(value, list | tuple):
+        return [_json_value(item) for item in value]
+    return value
+
+
+def document_quarantine_record(violation: DocumentViolation, *, batch_id: str) -> dict[str, Any]:
+    raw_payload = json.dumps(
+        _json_value(violation.raw_record), sort_keys=True, separators=(",", ":")
+    )
+    raw_hash = hashlib.sha256(raw_payload.encode()).hexdigest()
+    quarantine_id = hashlib.sha256(
+        "\x1f".join((batch_id, violation.code, raw_hash)).encode()
+    ).hexdigest()
+    return {
+        **violation.as_record(),
+        "batch_id": batch_id,
+        "raw_record_hash": raw_hash,
+        "quarantine_id": quarantine_id,
+    }
+
+
 def _required_text(value: Any, name: str, *, nullable: bool = False) -> str | None:
     if value is None or str(value).strip() == "":
         if nullable:
