@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Any
 
 import apache_beam as beam
@@ -16,14 +16,22 @@ from enterprise_platform.documents import (
     document_quarantine_record,
     parse_and_validate_document,
 )
+from enterprise_platform.embedding_lineage import EmbeddingProcessingError, embed_chunks
+from enterprise_platform.embeddings import (
+    DeterministicLocalEmbeddingProvider,
+    EmbeddingProvider,
+)
 
 
 @dataclass(frozen=True)
 class BeamDocumentOutputs:
     documents: beam.PCollection
     chunks: beam.PCollection
+    embedded_chunks: beam.PCollection
+    embedding_failures: beam.PCollection
     quarantined: beam.PCollection
     validation_reconciliation: beam.PCollection
+    embedding_reconciliation: beam.PCollection
     version_metrics: beam.PCollection
 
 
@@ -84,6 +92,41 @@ class _ResolveDocumentVersions(beam.DoFn):
         )
 
 
+class _EmbedChunk(beam.DoFn):
+    def __init__(
+        self,
+        provider: EmbeddingProvider,
+        embedded_at: datetime,
+        batch_id: str,
+    ) -> None:
+        self.provider = provider
+        self.embedded_at = embedded_at
+        self.batch_id = batch_id
+
+    def process(self, chunk: dict[str, Any]):
+        try:
+            yield embed_chunks(
+                [chunk],
+                self.provider,
+                embedded_at=self.embedded_at,
+            )[0]
+        except EmbeddingProcessingError as exc:
+            yield pvalue.TaggedOutput(
+                "quarantine",
+                {
+                    "code": "EMBEDDING_FAILURE",
+                    "message": str(exc),
+                    "batch_id": self.batch_id,
+                    "document_id": chunk["document_id"],
+                    "chunk_id": chunk["chunk_id"],
+                    "embedding_provider": self.provider.provider_name,
+                    "embedding_model": self.provider.model_id,
+                    "embedding_dimension": self.provider.dimension,
+                    "embedding_version": self.provider.embedding_version,
+                },
+            )
+
+
 def _reconcile_validation(item: tuple[str, dict[str, list[int]]]) -> dict[str, Any]:
     _, grouped = item
     source = sum(grouped["source"])
@@ -96,6 +139,22 @@ def _reconcile_validation(item: tuple[str, dict[str, list[int]]]) -> dict[str, A
         "source_rows": source,
         "contract_accepted_rows": accepted,
         "contract_quarantined_rows": quarantined,
+        "balanced": True,
+    }
+
+
+def _reconcile_embeddings(item: tuple[str, dict[str, list[int]]]) -> dict[str, Any]:
+    _, grouped = item
+    chunks = sum(grouped["chunks"])
+    embedded = sum(grouped["embedded"])
+    quarantined = sum(grouped["quarantine"])
+    if chunks != embedded + quarantined:
+        raise RuntimeError("document embedding counts do not reconcile")
+    return {
+        "entity": "document_chunks",
+        "source_chunks": chunks,
+        "embedded_chunks": embedded,
+        "embedding_quarantined_chunks": quarantined,
         "balanced": True,
     }
 
@@ -116,8 +175,10 @@ def build_document_graph(
     batch_id: str,
     prior_versions: Iterable[dict[str, Any]] = (),
     chunking_config: ChunkingConfig | None = None,
+    embedding_provider: EmbeddingProvider | None = None,
+    embedded_at: datetime | None = None,
 ) -> BeamDocumentOutputs:
-    """Build validation, version resolution, and chunking without cloud clients."""
+    """Build validation, versioning, chunking, and embedding without cloud clients."""
 
     raw = pipeline | "Create document lines" >> beam.Create(raw_lines)
     validated = raw | "Validate document envelopes" >> beam.ParDo(
@@ -140,9 +201,16 @@ def build_document_graph(
     chunks = resolved.documents | "Create deterministic chunks" >> beam.FlatMap(
         chunk_document, config
     )
+    provider = embedding_provider or DeterministicLocalEmbeddingProvider()
+    embedding_time = embedded_at or datetime.combine(business_date, datetime.min.time(), UTC)
+    embedding_outputs = chunks | "Embed document chunks" >> beam.ParDo(
+        _EmbedChunk(provider, embedding_time, batch_id)
+    ).with_outputs("quarantine", main="embedded")
+    embedding_failures = embedding_outputs.quarantine
     quarantined = (
         contract_quarantine,
         resolved.quarantine,
+        embedding_failures,
     ) | "Flatten document quarantine" >> beam.Flatten()
     validation_reconciliation = (
         {
@@ -153,10 +221,22 @@ def build_document_graph(
         | "Join document validation counts" >> beam.CoGroupByKey()
         | "Assert document validation reconciliation" >> beam.Map(_reconcile_validation)
     )
+    embedding_reconciliation = (
+        {
+            "chunks": _singleton_count(chunks, "chunks awaiting embedding"),
+            "embedded": _singleton_count(embedding_outputs.embedded, "embedded chunks"),
+            "quarantine": _singleton_count(embedding_failures, "embedding quarantine"),
+        }
+        | "Join embedding counts" >> beam.CoGroupByKey()
+        | "Assert embedding reconciliation" >> beam.Map(_reconcile_embeddings)
+    )
     return BeamDocumentOutputs(
         documents=resolved.documents,
         chunks=chunks,
+        embedded_chunks=embedding_outputs.embedded,
+        embedding_failures=embedding_failures,
         quarantined=quarantined,
         validation_reconciliation=validation_reconciliation,
+        embedding_reconciliation=embedding_reconciliation,
         version_metrics=resolved.metrics,
     )
