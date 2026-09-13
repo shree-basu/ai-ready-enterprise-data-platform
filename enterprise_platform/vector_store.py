@@ -87,6 +87,10 @@ class LocalVectorIndex:
         return None if self._space is None else self._space[2]
 
     @property
+    def embedding_space(self) -> tuple[str, str, int, str] | None:
+        return self._space
+
+    @property
     def rows(self) -> list[dict[str, Any]]:
         return [dict(self._rows[chunk_id]) for chunk_id in sorted(self._rows)]
 
