@@ -92,3 +92,12 @@ def test_chunks_inherit_active_version_and_access_metadata() -> None:
     ]
     assert all(chunk["allowed_groups"] == ["platform-engineering", "support"] for chunk in chunks)
     assert all(chunk["source_uri"].startswith("synthetic://") for chunk in chunks)
+
+
+def test_chunk_preserves_document_freshness_timestamp() -> None:
+    document = _document()
+    document["updated_at"] = "2026-09-15T02:00:00Z"
+
+    chunk = chunk_document(document)[0]
+
+    assert chunk["document_updated_at"] == "2026-09-15T02:00:00Z"

@@ -142,6 +142,7 @@ def chunk_document(
                 "source_uri": document["source_uri"],
                 "owner": document["owner"],
                 "title": document["title"],
+                "document_updated_at": document["updated_at"],
                 "is_active": document.get("is_active", True),
                 "chunk_version": config.version,
             }

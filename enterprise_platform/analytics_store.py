@@ -179,6 +179,14 @@ class LocalAnalyticsStore:
             LEFT JOIN invoice_metrics AS i USING (pipeline_run_id, account_id)
             LEFT JOIN support_metrics AS s USING (pipeline_run_id, account_id)
             LEFT JOIN usage_metrics AS u USING (pipeline_run_id, account_id);
+
+            CREATE OR REPLACE VIEW analytics_freshness AS
+            SELECT
+                max(business_date) AS latest_business_date,
+                max(data_updated_at) AS data_updated_at,
+                count(DISTINCT pipeline_run_id) AS published_runs,
+                count(*) AS serving_rows
+            FROM serving_account_health;
             """
         )
 
