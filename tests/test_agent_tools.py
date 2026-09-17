@@ -9,6 +9,7 @@ from enterprise_platform.audit import AuditEventType, LocalAuditLog
 from enterprise_platform.embeddings import DeterministicLocalEmbeddingProvider
 from enterprise_platform.governance import GovernedRetriever, PrincipalContext
 from enterprise_platform.lexical_index import LocalLexicalIndex
+from enterprise_platform.observability import LocalMetricsRegistry, MetricName
 from enterprise_platform.operations import LocalOperationService, OperationStatus
 from enterprise_platform.retrieval import LocalRetriever
 from enterprise_platform.sql_policy import ReadOnlySQLPolicy
@@ -81,6 +82,7 @@ def _tools(*, stale_analytics: bool = False):
     )
     audit = LocalAuditLog()
     operations = LocalOperationService(audit)
+    metrics = LocalMetricsRegistry()
     now = datetime(2026, 9, 17, 10, tzinfo=UTC)
     context = EnterpriseToolContext(
         principal=PrincipalContext("support-1", frozenset({"support"}), "AMER"),
@@ -95,6 +97,7 @@ def _tools(*, stale_analytics: bool = False):
         audit_log=audit,
         clock=lambda: now,
         max_sql_rows=10,
+        metrics=metrics,
     )
     return EnterpriseAgentTools(context), connection, audit, operations
 
@@ -161,3 +164,21 @@ def test_agent_can_only_create_pending_operation_request() -> None:
     assert not hasattr(tools, "approve_operation")
     assert len(audit.by_type(AuditEventType.OPERATION_REQUEST)) == 1
     assert len(audit.by_type(AuditEventType.AGENT_TOOL_CALL)) == 1
+
+
+def test_governed_tools_emit_bounded_local_metrics() -> None:
+    tools, connection, _, _ = _tools()
+    metrics = tools.context.metrics
+    assert metrics is not None
+    try:
+        tools.run_governed_sql("SELECT account_id FROM serving_account_health")
+        tools.run_governed_sql("DELETE FROM serving_account_health")
+        tools.search_enterprise_knowledge("API incident response", account_id="A-1001")
+    finally:
+        connection.close()
+
+    assert metrics.value(MetricName.SQL_QUERIES) == 2
+    assert metrics.value(MetricName.BLOCKED_SQL_ATTEMPTS) == 1
+    dimensions = {"retrieval_method": "hybrid"}
+    assert metrics.value(MetricName.RETRIEVAL_REQUESTS, dimensions=dimensions) == 1
+    assert metrics.value(MetricName.ACCESS_DENIED_CANDIDATES, dimensions=dimensions) == 1

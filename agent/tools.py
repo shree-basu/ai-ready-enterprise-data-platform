@@ -14,6 +14,7 @@ import duckdb
 from enterprise_platform.audit import AuditEventType, LocalAuditLog, create_audit_event
 from enterprise_platform.freshness import FreshnessThresholds, evaluate_freshness
 from enterprise_platform.governance import GovernedRetriever, PrincipalContext
+from enterprise_platform.observability import LocalMetricsRegistry, MetricName
 from enterprise_platform.operations import LocalOperationService
 from enterprise_platform.sql_policy import (
     ReadOnlySQLPolicy,
@@ -53,6 +54,7 @@ class EnterpriseToolContext:
     clock: Callable[[], datetime]
     freshness_thresholds: FreshnessThresholds = FreshnessThresholds()
     max_sql_rows: int = 100
+    metrics: LocalMetricsRegistry | None = None
 
     def __post_init__(self) -> None:
         if self.max_sql_rows < 1:
@@ -89,6 +91,8 @@ class EnterpriseAgentTools:
     def run_governed_sql(self, query: str) -> dict[str, Any]:
         """Run one bounded read-only SELECT against approved local serving views."""
 
+        if self.context.metrics is not None:
+            self.context.metrics.increment(MetricName.SQL_QUERIES)
         query_hash = _query_hash(query)
         try:
             validated = self.context.sql_policy.validate(query)
@@ -99,6 +103,8 @@ class EnterpriseAgentTools:
                 max_rows=self.context.max_sql_rows,
             )
         except SQLPolicyViolation:
+            if self.context.metrics is not None:
+                self.context.metrics.increment(MetricName.BLOCKED_SQL_ATTEMPTS)
             self._audit(
                 AuditEventType.SQL_QUERY,
                 action="run_governed_sql",
@@ -153,6 +159,21 @@ class EnterpriseAgentTools:
             k=top_k,
             candidate_k=max(20, top_k),
         )
+        if self.context.metrics is not None:
+            self.context.metrics.increment(
+                MetricName.RETRIEVAL_REQUESTS,
+                dimensions={"retrieval_method": "hybrid"},
+            )
+            if not result.evidence:
+                self.context.metrics.increment(
+                    MetricName.RETRIEVAL_EMPTY_RESULTS,
+                    dimensions={"retrieval_method": "hybrid"},
+                )
+            self.context.metrics.increment(
+                MetricName.ACCESS_DENIED_CANDIDATES,
+                result.access_denied_candidates,
+                dimensions={"retrieval_method": "hybrid"},
+            )
         document_ids = tuple(evidence.document_id for evidence in result.evidence)
         self._audit(
             AuditEventType.RETRIEVAL,
