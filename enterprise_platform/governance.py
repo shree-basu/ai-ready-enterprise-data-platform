@@ -35,12 +35,16 @@ class AccessDecision:
 @dataclass(frozen=True)
 class GovernedEvidence:
     document_id: str
+    document_version: int
     chunk_id: str
     citation_id: str
+    title: str
     content_kind: str
     content: str
+    content_hash: str
     source_uri: str
     classification: str
+    retrieval_method: str
     score: float
     semantic_rank: int | None
     lexical_rank: int | None
@@ -104,13 +108,16 @@ class GovernedRetriever:
         mode: RetrievalMode = RetrievalMode.HYBRID,
         k: int = 5,
         candidate_k: int = 20,
+        account_id: str | None = None,
     ) -> GovernedRetrievalResult:
         query_vectors = self.embedding_provider.embed([query], task_type="RETRIEVAL_QUERY")
         if len(query_vectors) != 1:
             raise ValueError("query embedding provider must return exactly one vector")
 
         def permitted(chunk: dict[str, Any]) -> bool:
-            return authorize_chunk(principal, chunk).allowed
+            authorized = authorize_chunk(principal, chunk).allowed
+            in_scope = account_id is None or chunk.get("account_id") in {None, account_id}
+            return authorized and in_scope
 
         denied = sum(
             not authorize_chunk(principal, chunk).allowed
@@ -127,12 +134,16 @@ class GovernedRetriever:
         evidence = tuple(
             GovernedEvidence(
                 document_id=str(hit.chunk["document_id"]),
+                document_version=int(hit.chunk["document_version"]),
                 chunk_id=str(hit.chunk["chunk_id"]),
                 citation_id=hit.citation_id,
+                title=str(hit.chunk["title"]),
                 content_kind="UNTRUSTED_DOCUMENT_DATA",
                 content=str(hit.chunk["chunk_text"]),
+                content_hash=str(hit.chunk["content_hash"]),
                 source_uri=str(hit.chunk["source_uri"]),
                 classification=str(hit.chunk["classification"]),
+                retrieval_method=mode.value,
                 score=hit.score,
                 semantic_rank=hit.semantic_rank,
                 lexical_rank=hit.lexical_rank,

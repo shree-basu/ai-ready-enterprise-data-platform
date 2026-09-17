@@ -46,11 +46,15 @@ def _row(
     groups: list[str],
     classification: str = "RESTRICTED",
     region: str | None = None,
+    account_id: str | None = None,
 ) -> dict[str, object]:
     row: dict[str, object] = {
         "chunk_id": chunk_id,
         "document_id": f"DOC-{chunk_id.upper()}",
+        "document_version": 1,
+        "title": f"Title {chunk_id}",
         "chunk_text": text,
+        "content_hash": f"hash-{chunk_id}",
         "source_uri": f"synthetic://knowledge/{chunk_id}",
         "classification": classification,
         "allowed_groups": groups,
@@ -61,6 +65,7 @@ def _row(
         "embedding_dimension": 2,
         "embedding_version": "retrieval-test-v1:dimension=2",
         "is_active": True,
+        "account_id": account_id,
     }
     if region is not None:
         row["region"] = region
@@ -98,6 +103,9 @@ def test_highest_scoring_restricted_document_never_leaks_to_unauthorized_user() 
     assert result.access_denied_candidates == 1
     assert result.evidence[0].content_kind == "UNTRUSTED_DOCUMENT_DATA"
     assert result.evidence[0].citation_id == "DOC-ALLOWED#allowed"
+    assert result.evidence[0].document_version == 1
+    assert result.evidence[0].content_hash == "hash-allowed"
+    assert result.evidence[0].retrieval_method == "hybrid"
 
 
 def test_authorized_group_can_retrieve_restricted_document() -> None:
@@ -149,3 +157,30 @@ def test_query_provider_must_match_indexed_embedding_space() -> None:
 
     with pytest.raises(EmbeddingSpaceMismatch, match="query provider"):
         GovernedRetriever(local, _QueryProvider())
+
+
+def test_account_scope_is_applied_before_candidate_scoring() -> None:
+    rows = [
+        _row(
+            "other-account",
+            "target incident",
+            [1.0, 0.0],
+            groups=["support"],
+            account_id="A-2002",
+        ),
+        _row(
+            "requested-account",
+            "target incident response",
+            [0.8, 0.2],
+            groups=["support"],
+            account_id="A-1001",
+        ),
+    ]
+
+    result = _governed(rows).search(
+        "target incident",
+        principal=PrincipalContext("support-1", frozenset({"support"}), "AMER"),
+        account_id="A-1001",
+    )
+
+    assert [evidence.chunk_id for evidence in result.evidence] == ["requested-account"]
