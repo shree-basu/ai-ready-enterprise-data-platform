@@ -39,7 +39,20 @@ def test_recall_mrr_ndcg_and_empty_rate_are_computed_without_cherry_picking() ->
 
 def test_all_modes_use_the_same_versioned_cases_and_report_is_stable(tmp_path: Path) -> None:
     dataset = load_evaluation_dataset(Path("evaluation/datasets/enterprise_agent_v1.json"))
-    result = (RankedResult("knowledge-authorized-runbook", ("chunk-runbook",)),)
+    result = (
+        RankedResult(
+            "knowledge-authorized-runbook",
+            ("d1891a879edf9ed821f6273c6d5cb985d112a86d0b51832258cb7dd0cd426c81",),
+        ),
+        RankedResult(
+            "knowledge-account-incident",
+            ("d9179060391aab4f76af904687700c222b157ea613fbe08906aa56e884d6437a",),
+        ),
+        RankedResult(
+            "knowledge-finance-policy",
+            ("b3dcbe3c28d4fbf190234759ed62f1da1628d7e6fdc18abfa939a6293cdca237",),
+        ),
+    )
     comparison = compare_retrieval_modes(
         dataset,
         {mode: result for mode in RetrievalMode},

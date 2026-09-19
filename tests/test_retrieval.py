@@ -87,3 +87,17 @@ def test_empty_result_and_invalid_search_contracts_are_explicit() -> None:
             semantic_weight=0,
             lexical_weight=0,
         )
+    with pytest.raises(ValueError, match="minimum_score must be finite"):
+        retriever.search("invoice", query_vector=[1.0, 0.0], minimum_score=float("nan"))
+
+
+def test_minimum_score_removes_weak_candidates_before_top_k() -> None:
+    hits = _retriever().search(
+        "invoice",
+        query_vector=[1.0, 0.0],
+        mode=RetrievalMode.SEMANTIC,
+        k=3,
+        minimum_score=0.5,
+    )
+
+    assert [hit.chunk["chunk_id"] for hit in hits] == ["combined", "semantic"]

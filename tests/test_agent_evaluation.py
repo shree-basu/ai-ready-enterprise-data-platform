@@ -16,9 +16,18 @@ def _passing_observations() -> tuple[AgentObservation, ...]:
             case_id="knowledge-authorized-runbook",
             answer="Use the approved API incident runbook.",
             tool_calls=("search_enterprise_knowledge",),
-            citation_ids=("DOC-RUNBOOK#chunk-runbook",),
-            evidence_by_citation=(("DOC-RUNBOOK#chunk-runbook", "approved API incident runbook"),),
-            authorized_citation_ids=frozenset({"DOC-RUNBOOK#chunk-runbook"}),
+            citation_ids=(
+                "DOC-RUNBOOK-001#d1891a879edf9ed821f6273c6d5cb985d112a86d0b51832258cb7dd0cd426c81",
+            ),
+            evidence_by_citation=(
+                (
+                    "DOC-RUNBOOK-001#d1891a879edf9ed821f6273c6d5cb985d112a86d0b51832258cb7dd0cd426c81",
+                    "approved API incident runbook",
+                ),
+            ),
+            authorized_citation_ids=frozenset(
+                {"DOC-RUNBOOK-001#d1891a879edf9ed821f6273c6d5cb985d112a86d0b51832258cb7dd0cd426c81"}
+            ),
             asserted_facts=("approved API incident runbook",),
         ),
         AgentObservation(
@@ -46,13 +55,51 @@ def _passing_observations() -> tuple[AgentObservation, ...]:
             tool_calls=("request_pipeline_reprocessing",),
             operation_status="PENDING_APPROVAL",
         ),
+        AgentObservation(
+            case_id="knowledge-account-incident",
+            answer="A retry storm increased failed API requests.",
+            tool_calls=("search_enterprise_knowledge",),
+            citation_ids=(
+                "DOC-INCIDENT-001#d9179060391aab4f76af904687700c222b157ea613fbe08906aa56e884d6437a",
+            ),
+            evidence_by_citation=(
+                (
+                    "DOC-INCIDENT-001#d9179060391aab4f76af904687700c222b157ea613fbe08906aa56e884d6437a",
+                    "A retry storm increased failed API requests.",
+                ),
+            ),
+            authorized_citation_ids=frozenset(
+                {
+                    "DOC-INCIDENT-001#d9179060391aab4f76af904687700c222b157ea613fbe08906aa56e884d6437a"
+                }
+            ),
+            asserted_facts=("retry storm increased failed API requests",),
+        ),
+        AgentObservation(
+            case_id="knowledge-finance-policy",
+            answer="Invoices over fifteen days past due require account-owner review.",
+            tool_calls=("search_enterprise_knowledge",),
+            citation_ids=(
+                "DOC-POLICY-001#b3dcbe3c28d4fbf190234759ed62f1da1628d7e6fdc18abfa939a6293cdca237",
+            ),
+            evidence_by_citation=(
+                (
+                    "DOC-POLICY-001#b3dcbe3c28d4fbf190234759ed62f1da1628d7e6fdc18abfa939a6293cdca237",
+                    "Invoices over fifteen days past due require account-owner review.",
+                ),
+            ),
+            authorized_citation_ids=frozenset(
+                {"DOC-POLICY-001#b3dcbe3c28d4fbf190234759ed62f1da1628d7e6fdc18abfa939a6293cdca237"}
+            ),
+            asserted_facts=("invoices over fifteen days past due",),
+        ),
     )
 
 
 def test_complete_agent_evaluation_passes_and_states_method_limits() -> None:
     report = evaluate_agent_observations(DATASET, _passing_observations())
 
-    assert report.evaluated_cases == report.passed_cases == 5
+    assert report.evaluated_cases == report.passed_cases == 7
     assert all(result.passed for result in report.case_results)
     assert any(
         "not semantic groundedness" in limitation for limitation in report.method_limitations
@@ -80,7 +127,7 @@ def test_unauthorized_citation_and_missing_stale_warning_fail_explicitly() -> No
     report = evaluate_agent_observations(DATASET, tuple(observations))
     failures = {result.case_id: result.failures for result in report.case_results}
 
-    assert report.passed_cases == 3
+    assert report.passed_cases == 5
     assert "unauthorized evidence or citation returned" in failures["knowledge-restricted-refusal"]
     assert "stale data was not disclosed" in failures["analytics-account-overdue"]
 

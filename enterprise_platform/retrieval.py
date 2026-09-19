@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
@@ -58,6 +59,7 @@ class LocalRetriever:
         metadata_filter: MetadataFilter | None = None,
         semantic_weight: float = 1.0,
         lexical_weight: float = 1.0,
+        minimum_score: float | None = None,
     ) -> list[RetrievalHit]:
         if k < 1:
             raise ValueError("k must be positive")
@@ -67,6 +69,8 @@ class LocalRetriever:
             raise ValueError("retrieval weights cannot be negative")
         if semantic_weight == lexical_weight == 0:
             raise ValueError("at least one retrieval weight must be positive")
+        if minimum_score is not None and not math.isfinite(minimum_score):
+            raise ValueError("minimum_score must be finite")
         if mode in {RetrievalMode.SEMANTIC, RetrievalMode.HYBRID} and query_vector is None:
             raise ValueError(f"query_vector is required for {mode.value} retrieval")
 
@@ -126,4 +130,5 @@ class LocalRetriever:
                     lexical_rank=lexical_rank,
                 )
             )
-        return sorted(combined, key=lambda hit: (-hit.score, hit.chunk["chunk_id"]))[:k]
+        eligible = [hit for hit in combined if minimum_score is None or hit.score >= minimum_score]
+        return sorted(eligible, key=lambda hit: (-hit.score, hit.chunk["chunk_id"]))[:k]

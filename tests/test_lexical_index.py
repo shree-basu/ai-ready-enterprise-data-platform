@@ -65,3 +65,7 @@ def test_tokenization_and_empty_query_behavior_are_explicit() -> None:
     assert index.search("---") == []
     with pytest.raises(ValueError, match="k must be positive"):
         index.search("availability", k=0)
+
+
+def test_stop_words_do_not_create_irrelevant_lexical_matches() -> None:
+    assert tokenize("What is the policy for A-1001?") == ["policy", "1001"]

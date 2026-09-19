@@ -109,6 +109,7 @@ class GovernedRetriever:
         k: int = 5,
         candidate_k: int = 20,
         account_id: str | None = None,
+        minimum_score: float = 0.02,
     ) -> GovernedRetrievalResult:
         query_vectors = self.embedding_provider.embed([query], task_type="RETRIEVAL_QUERY")
         if len(query_vectors) != 1:
@@ -130,6 +131,7 @@ class GovernedRetriever:
             k=k,
             candidate_k=candidate_k,
             metadata_filter=permitted,
+            minimum_score=minimum_score,
         )
         evidence = tuple(
             GovernedEvidence(

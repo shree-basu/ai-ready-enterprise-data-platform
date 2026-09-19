@@ -25,11 +25,17 @@ class LexicalIndexUpdate:
 
 MetadataFilter = Callable[[dict[str, Any]], bool]
 
+_STOP_WORDS = frozenset(
+    {"a", "an", "and", "are", "for", "in", "is", "of", "on", "the", "to", "what", "which"}
+)
+
 
 def tokenize(text: str) -> list[str]:
     """Use a stable, intentionally simple token contract for offline evidence."""
 
-    return re.findall(r"[a-z0-9]+", text.casefold())
+    return [
+        token for token in re.findall(r"[a-z0-9]+", text.casefold()) if token not in _STOP_WORDS
+    ]
 
 
 class LocalLexicalIndex:
@@ -101,7 +107,10 @@ class LocalLexicalIndex:
         ]
         if not candidates:
             return []
-        tokenized = {str(row["chunk_id"]): tokenize(row["chunk_text"]) for row in candidates}
+        tokenized = {
+            str(row["chunk_id"]): tokenize(f"{row.get('title', '')} {row['chunk_text']}")
+            for row in candidates
+        }
         average_length = sum(len(tokens) for tokens in tokenized.values()) / len(tokenized)
         if average_length == 0:
             return []

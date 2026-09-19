@@ -15,7 +15,7 @@ def test_versioned_dataset_covers_positive_negative_and_operational_cases() -> N
 
     assert dataset.dataset_id == "enterprise-agent-offline-eval"
     assert dataset.version == 1
-    assert len(dataset.cases) == 5
+    assert len(dataset.cases) == 7
     assert {case.expected_access for case in dataset.cases} == {
         "ALLOW",
         "REFUSE",

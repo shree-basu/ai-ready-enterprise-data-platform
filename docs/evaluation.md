@@ -16,3 +16,8 @@ document is filtered before ranking in dedicated regression tests.
 These are deterministic software and retrieval-contract evaluations. They do not measure natural
 language helpfulness, semantic entailment, hosted-model quality, adversarial robustness, production
 recall, or human satisfaction. No external model/judge is called.
+
+Run `python -m evaluation.offline` to regenerate
+`evaluation/reports/baseline_v1.json` from the deterministic `unauthorized-document` scenario. The
+committed report includes all three retrieval modes and the mandatory restricted-access refusal; it
+is local evidence only and does not claim production performance.
