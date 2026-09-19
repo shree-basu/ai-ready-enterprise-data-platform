@@ -9,6 +9,9 @@ description = "Cloud-free reference implementation for governed analytics and en
 requires-python = ">=3.11"
 dependencies = ["apache-beam==2.75.0", "duckdb==1.5.5", "google-adk==2.9.1"]
 
+[dependency-groups]
+dev = ["pytest==8.4.1", "ruff==0.12.11", "sqlfluff==3.3.1"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
