@@ -62,6 +62,10 @@ def violations(root: Path = ROOT) -> list[str]:
         for runner in re.findall(r"runs-on:\s*([^\s#]+)", text):
             if runner != "ubuntu-latest":
                 findings.append(f"{relative}: disallowed runner {runner}")
+        for action in re.findall(r"uses:\s*([^\s#]+)", text):
+            reference = action.rsplit("@", maxsplit=1)[-1]
+            if not re.fullmatch(r"[0-9a-f]{40}", reference):
+                findings.append(f"{relative}: action is not pinned to a full commit SHA")
         for pattern, label in FORBIDDEN_WORKFLOW_PATTERNS.items():
             if re.search(pattern, text, flags=re.IGNORECASE | re.DOTALL):
                 findings.append(f"{relative}: {label}")
