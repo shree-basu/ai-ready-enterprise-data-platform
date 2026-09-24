@@ -13,7 +13,7 @@ synthetic, local, and cloud-free.
 | Category | Evidence in this repository |
 |---|---|
 | Implemented and locally tested | Immutable delivery, Beam DirectRunner graphs, DQ/quarantine/reconciliation, DuckDB serving, deterministic embeddings, exact vector/BM25 hybrid retrieval, external authorization, Google ADK routing, audit, approval workflow, metrics, offline evaluation, and the end-to-end demo |
-| Implemented and statically validated for GCP | BigQuery table/view/search/index SQL and the explicitly injected Vertex embedding request contract |
+| Implemented and statically validated for GCP | BigQuery table/view/search/index SQL and an explicitly injected Vertex AI embedding PredictionService request/response contract |
 | Production architecture target—not deployed | Cloud Storage, Dataflow, BigQuery, Vertex AI embeddings, BigQuery search indexes, and a separately governed ADK runtime |
 | Not evidenced | GCP execution, production scale/QPS/latency/SLA/cost/users, cloud IAM enforcement, ANN recall, hosted-model answer quality, or production security certification |
 

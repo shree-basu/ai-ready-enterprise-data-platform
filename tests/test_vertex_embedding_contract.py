@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any
 
 import pytest
+from google.protobuf import json_format
+from google.protobuf.struct_pb2 import Value
 
 from enterprise_platform.vertex_embedding_contract import (
     VertexEmbeddingConfig,
@@ -11,79 +13,155 @@ from enterprise_platform.vertex_embedding_contract import (
 )
 
 
+def protobuf_value(payload: dict[str, Any]) -> Value:
+    value = Value()
+    json_format.ParseDict(payload, value)
+    return value
+
+
+@dataclass
+class FakePredictResponse:
+    predictions: list[Value]
+
+
 class FakePredictionClient:
     def __init__(self, dimension: int) -> None:
         self.dimension = dimension
-        self.requests: list[Mapping[str, Any]] = []
+        self.calls: list[dict[str, Any]] = []
 
-    def predict(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
-        self.requests.append(request)
-        return {"predictions": [{"embeddings": {"values": [0.25] * self.dimension}}]}
+    def predict(
+        self,
+        *,
+        endpoint: str,
+        instances: list[Value],
+        parameters: Value,
+    ) -> FakePredictResponse:
+        self.calls.append(
+            {"endpoint": endpoint, "instances": list(instances), "parameters": parameters}
+        )
+        return FakePredictResponse(
+            [protobuf_value({"embeddings": {"values": [0.25] * self.dimension}})]
+        )
 
 
-def test_request_contract_uses_stable_model_task_dimension_and_no_truncation() -> None:
+def config(**overrides: Any) -> VertexEmbeddingConfig:
+    return VertexEmbeddingConfig(project_id="example-test-project", **overrides)
+
+
+def test_request_contract_matches_prediction_service_keyword_boundary() -> None:
     client = FakePredictionClient(8)
-    provider = VertexEmbeddingContract(
-        client=client,
-        config=VertexEmbeddingConfig(output_dimension=8),
-    )
+    provider = VertexEmbeddingContract(client=client, config=config(output_dimension=8))
 
     vectors = provider.embed(["governed document"], task_type="RETRIEVAL_DOCUMENT")
 
     assert vectors == [[0.25] * 8]
-    assert client.requests == [
-        {
-            "model": "gemini-embedding-001",
-            "instances": [
-                {
-                    "content": "governed document",
-                    "task_type": "RETRIEVAL_DOCUMENT",
-                }
-            ],
-            "parameters": {
-                "autoTruncate": False,
-                "outputDimensionality": 8,
-            },
-        }
-    ]
-
-
-def test_each_text_builds_one_request_for_the_validated_model_contract() -> None:
-    client = FakePredictionClient(4)
-    provider = VertexEmbeddingContract(
-        client=client,
-        config=VertexEmbeddingConfig(output_dimension=4),
+    assert len(client.calls) == 1
+    call = client.calls[0]
+    assert call["endpoint"] == (
+        "projects/example-test-project/locations/us-central1/"
+        "publishers/google/models/gemini-embedding-001"
     )
+    assert json_format.MessageToDict(call["instances"][0]) == {
+        "content": "governed document",
+        "task_type": "RETRIEVAL_DOCUMENT",
+    }
+    assert json_format.MessageToDict(call["parameters"]) == {
+        "autoTruncate": False,
+        "outputDimensionality": 8.0,
+    }
+
+
+def test_each_text_makes_one_prediction_service_call() -> None:
+    client = FakePredictionClient(4)
+    provider = VertexEmbeddingContract(client=client, config=config(output_dimension=4))
 
     vectors = provider.embed(["one", "two"], task_type="RETRIEVAL_QUERY")
 
-    assert len(vectors) == 2
-    assert len(client.requests) == 2
+    assert vectors == [[0.25] * 4, [0.25] * 4]
+    assert len(client.calls) == 2
+    assert all(len(call["instances"]) == 1 for call in client.calls)
 
 
-def test_client_must_be_injected_and_configuration_fails_closed() -> None:
+def test_client_and_configuration_must_be_explicit() -> None:
+    client = FakePredictionClient(4)
     with pytest.raises(ValueError, match="injected"):
-        VertexEmbeddingContract(client=None)  # type: ignore[arg-type]
-    with pytest.raises(ValueError, match="only gemini-embedding-001"):
-        VertexEmbeddingConfig(model_id="preview-or-legacy-model")
-    with pytest.raises(ValueError, match="one input"):
-        VertexEmbeddingConfig(batch_size=2)
+        VertexEmbeddingContract(client=None, config=config())
+    with pytest.raises(ValueError, match="configuration"):
+        VertexEmbeddingContract(client=client, config=None)
 
 
-class InvalidResponseClient:
-    def __init__(self, vector: list[Any]) -> None:
-        self.vector = vector
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"project_id": ""}, "project_id"),
+        ({"project_id": "bad/project"}, "project_id"),
+        ({"project_id": "example-test-project", "location": ""}, "location"),
+        (
+            {"project_id": "example-test-project", "model_id": "preview-or-legacy-model"},
+            "only gemini-embedding-001",
+        ),
+        ({"project_id": "example-test-project", "output_dimension": 0}, "between 1 and 3072"),
+        ({"project_id": "example-test-project", "output_dimension": 3073}, "between 1 and 3072"),
+        ({"project_id": "example-test-project", "batch_size": 2}, "one input"),
+    ],
+)
+def test_configuration_fails_closed(kwargs: dict[str, Any], message: str) -> None:
+    with pytest.raises(ValueError, match=message):
+        VertexEmbeddingConfig(**kwargs)
 
-    def predict(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
-        return {"predictions": [{"embeddings": {"values": self.vector}}]}
+
+def test_invalid_task_type_is_rejected_before_calling_client() -> None:
+    client = FakePredictionClient(2)
+    provider = VertexEmbeddingContract(client=client, config=config(output_dimension=2))
+
+    with pytest.raises(ValueError, match="unsupported embedding task type"):
+        provider.embed(["text"], task_type="UNSUPPORTED")
+
+    assert client.calls == []
 
 
-@pytest.mark.parametrize("vector", [[0.1], [0.1, float("nan")], [0.1, "bad"]])
-def test_invalid_response_dimensions_and_values_are_rejected(vector: list[Any]) -> None:
+class ResponseClient:
+    def __init__(self, response: Any) -> None:
+        self.response = response
+
+    def predict(self, **_: Any) -> Any:
+        return self.response
+
+
+@pytest.mark.parametrize(
+    ("response", "message"),
+    [
+        (object(), "no predictions"),
+        (FakePredictResponse([]), "no predictions"),
+        (FakePredictResponse([protobuf_value({"wrong": {}})]), "missing embeddings"),
+        (FakePredictResponse([protobuf_value({"embeddings": {}})]), "missing values"),
+        (
+            FakePredictResponse([protobuf_value({"embeddings": {"values": [0.1]}})]),
+            "dimension mismatch",
+        ),
+        (
+            FakePredictResponse([protobuf_value({"embeddings": {"values": [0.1, float("nan")]}})]),
+            "non-finite or non-numeric",
+        ),
+        (
+            FakePredictResponse([protobuf_value({"embeddings": {"values": [0.1, float("inf")]}})]),
+            "non-finite or non-numeric",
+        ),
+        (
+            FakePredictResponse([protobuf_value({"embeddings": {"values": [0.1, "bad"]}})]),
+            "non-finite or non-numeric",
+        ),
+        (
+            {"predictions": [{"embeddings": {"values": [0.1, 0.2]}}]},
+            "no predictions",
+        ),
+    ],
+)
+def test_malformed_native_responses_fail_closed(response: Any, message: str) -> None:
     provider = VertexEmbeddingContract(
-        client=InvalidResponseClient(vector),
-        config=VertexEmbeddingConfig(output_dimension=2),
+        client=ResponseClient(response),
+        config=config(output_dimension=2),
     )
 
-    with pytest.raises(ValueError, match="dimension mismatch|non-finite|non-numeric"):
+    with pytest.raises(ValueError, match=message):
         provider.embed(["text"], task_type="RETRIEVAL_DOCUMENT")

@@ -8,7 +8,7 @@ The repository has no cloud credentials, deployment workflow, Terraform, or BigQ
 script. Creating tables or indexes and running queries can incur charges, so none of this SQL is
 executed by local tests or repository automation.
 
-`account_health_shared` becomes an authorized view only after a data owner grants that view access
+`account_directory_shared` becomes an authorized view only after a data owner grants that view access
 to the source dataset using a separately reviewed IAM/API operation. SQL view creation alone does
 not create that authorization. Consumers still require query-job permission in their execution
 project and view-data permission on the serving dataset.
