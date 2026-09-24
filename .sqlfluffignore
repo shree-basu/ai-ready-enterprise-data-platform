@@ -1,0 +1,2 @@
+# SQLFluff 3.3.1 lacks BigQuery CREATE VECTOR INDEX grammar; see contract test.
+sql/bigquery/21_vector_index.sql

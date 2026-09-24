@@ -1,0 +1,46 @@
+name: Cloud-free CI
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloud-free-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PIP_NO_INPUT: "1"
+  GOOGLE_APPLICATION_CREDENTIALS: ""
+  CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE: ""
+
+jobs:
+  validate:
+    name: Local platform, SQL, and safety
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+      - name: Install hash-locked dependencies
+        run: python -m pip install --require-hashes -r requirements.lock
+      - name: Check Python formatting and lint
+        run: |
+          ruff format --check .
+          ruff check .
+      - name: Compile Python
+        run: python -m compileall -q agent beam data demo enterprise_platform evaluation scripts tests
+      - name: Run complete cloud-free test suite
+        run: python -m pytest -q
+      - name: Validate BigQuery reference SQL statically
+        run: sqlfluff lint sql/bigquery --ignore-local-config --config .sqlfluff
+      - name: Enforce repository deployment safety
+        run: python scripts/check_repo_safety.py

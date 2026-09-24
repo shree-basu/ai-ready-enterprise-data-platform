@@ -1,0 +1,41 @@
+{
+  "dataset_id": "enterprise-agent-offline-eval",
+  "dataset_version": 1,
+  "generated_from_scenario": "unauthorized-document",
+  "limitations": [
+    "Local deterministic token-hash embeddings are not a semantic production model.",
+    "Metrics are offline contract evidence, not production latency or ANN recall.",
+    "Agent behavior is covered separately by deterministic ADK and policy tests."
+  ],
+  "restricted_refusal_passed": true,
+  "retrieval": {
+    "dataset_id": "enterprise-agent-offline-eval",
+    "dataset_version": 1,
+    "metrics_by_mode": {
+      "hybrid": {
+        "empty_result_rate": 0.0,
+        "evaluated_cases": 3,
+        "k": 3,
+        "mean_reciprocal_rank": 0.8333333333333334,
+        "ndcg_at_k": 0.8769765845238192,
+        "recall_at_k": 1.0
+      },
+      "lexical": {
+        "empty_result_rate": 0.0,
+        "evaluated_cases": 3,
+        "k": 3,
+        "mean_reciprocal_rank": 1.0,
+        "ndcg_at_k": 1.0,
+        "recall_at_k": 1.0
+      },
+      "semantic": {
+        "empty_result_rate": 0.0,
+        "evaluated_cases": 3,
+        "k": 3,
+        "mean_reciprocal_rank": 0.6666666666666666,
+        "ndcg_at_k": 0.6666666666666666,
+        "recall_at_k": 0.6666666666666666
+      }
+    }
+  }
+}
